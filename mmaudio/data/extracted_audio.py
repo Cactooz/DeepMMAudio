@@ -55,6 +55,8 @@ class ExtractedAudio(Dataset):
                                               self.data_dim['clip_dim'])
         self.fake_sync_features = torch.zeros(self.data_dim['sync_seq_len'],
                                               self.data_dim['sync_dim'])
+        self.fake_depth_features = torch.zeros(self.data_dim['clip_seq_len'],
+                                               self.data_dim['clip_dim'])
         self.video_exist = torch.tensor(0, dtype=torch.bool)
         self.text_exist = torch.tensor(1, dtype=torch.bool)
 
@@ -77,6 +79,7 @@ class ExtractedAudio(Dataset):
             'a_std': self.std[idx],
             'clip_features': self.fake_clip_features,
             'sync_features': self.fake_sync_features,
+            'depth_features': self.fake_depth_features,
             'text_features': self.text_features[idx],
             'caption': self.df_list[idx]['caption'],
             'video_exist': self.video_exist,

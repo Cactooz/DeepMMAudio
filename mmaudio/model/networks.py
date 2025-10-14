@@ -64,6 +64,9 @@ class MMAudio(nn.Module):
             )
 
             self.clip_input_proj = nn.Sequential(
+                # linear from clip_dim + depth_dim (should be clip*2) to clip_dim
+                nn.Linear(clip_dim * 2, clip_dim),
+                nn.SiLU(),
                 nn.Linear(clip_dim, hidden_dim),
                 nn.SiLU(),
                 ConvMLP(hidden_dim, hidden_dim * 4, kernel_size=3, padding=1),
@@ -88,6 +91,8 @@ class MMAudio(nn.Module):
             )
 
             self.clip_input_proj = nn.Sequential(
+                # linear from clip_dim + depth_dim (should be clip*2) to clip_dim
+                nn.Linear(clip_dim * 2, clip_dim),
                 nn.Linear(clip_dim, hidden_dim),
                 ConvMLP(hidden_dim, hidden_dim * 4, kernel_size=3, padding=1),
             )
@@ -147,6 +152,7 @@ class MMAudio(nn.Module):
 
         self.empty_string_feat = nn.Parameter(empty_string_feat, requires_grad=False)
         self.empty_clip_feat = nn.Parameter(torch.zeros(1, clip_dim), requires_grad=True)
+        self.empty_depth_feat = nn.Parameter(torch.zeros(1, clip_dim), requires_grad=True)
         self.empty_sync_feat = nn.Parameter(torch.zeros(1, sync_dim), requires_grad=True)
 
         self.initialize_weights()
@@ -221,7 +227,7 @@ class MMAudio(nn.Module):
         return x.mul_(self.latent_std).add_(self.latent_mean)
 
     def preprocess_conditions(self, clip_f: torch.Tensor, sync_f: torch.Tensor,
-                              text_f: torch.Tensor) -> PreprocessedConditions:
+                              text_f: torch.Tensor, depth_f: torch.Tensor) -> PreprocessedConditions:
         """
         cache computations that do not depend on the latent/time step
         i.e., the features are reused over steps during inference
@@ -229,6 +235,7 @@ class MMAudio(nn.Module):
         assert clip_f.shape[1] == self._clip_seq_len, f'{clip_f.shape=} {self._clip_seq_len=}'
         assert sync_f.shape[1] == self._sync_seq_len, f'{sync_f.shape=} {self._sync_seq_len=}'
         assert text_f.shape[1] == self._text_seq_len, f'{text_f.shape=} {self._text_seq_len=}'
+
 
         bs = clip_f.shape[0]
 
@@ -238,6 +245,7 @@ class MMAudio(nn.Module):
         sync_f = sync_f.flatten(1, 2)  # (B, VN, D)
 
         # extend vf to match x
+        clip_f = torch.cat([clip_f, depth_f], dim=-1)  # (B, VN, clip_f*2)
         clip_f = self.clip_input_proj(clip_f)  # (B, VN, D)
         sync_f = self.sync_input_proj(sync_f)  # (B, VN, D)
         text_f = self.text_input_proj(text_f)  # (B, VN, D)
@@ -288,13 +296,13 @@ class MMAudio(nn.Module):
         return flow
 
     def forward(self, latent: torch.Tensor, clip_f: torch.Tensor, sync_f: torch.Tensor,
-                text_f: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+                text_f: torch.Tensor, t: torch.Tensor, depth_f: torch.Tensor) -> torch.Tensor:
         """
         latent: (B, N, C) 
         vf: (B, T, C_V)
         t: (B,)
         """
-        conditions = self.preprocess_conditions(clip_f, sync_f, text_f)
+        conditions = self.preprocess_conditions(clip_f, sync_f, text_f, depth_f)
         flow = self.predict_flow(latent, t, conditions)
         return flow
 
@@ -303,6 +311,9 @@ class MMAudio(nn.Module):
 
     def get_empty_clip_sequence(self, bs: int) -> torch.Tensor:
         return self.empty_clip_feat.unsqueeze(0).expand(bs, self._clip_seq_len, -1)
+
+    def get_empty_depth_sequence(self, bs: int) -> torch.Tensor:
+        return self.empty_depth_feat.unsqueeze(0).expand(bs, self._clip_seq_len, -1)
 
     def get_empty_sync_sequence(self, bs: int) -> torch.Tensor:
         return self.empty_sync_feat.unsqueeze(0).expand(bs, self._sync_seq_len, -1)
@@ -318,8 +329,9 @@ class MMAudio(nn.Module):
             empty_text = self.get_empty_string_sequence(1)
 
         empty_clip = self.get_empty_clip_sequence(1)
+        empty_depth = self.get_empty_depth_sequence(1)
         empty_sync = self.get_empty_sync_sequence(1)
-        conditions = self.preprocess_conditions(empty_clip, empty_sync, empty_text)
+        conditions = self.preprocess_conditions(empty_clip, empty_sync, empty_text, empty_depth)
         conditions.clip_f = conditions.clip_f.expand(bs, -1, -1)
         conditions.sync_f = conditions.sync_f.expand(bs, -1, -1)
         conditions.clip_f_c = conditions.clip_f_c.expand(bs, -1)
