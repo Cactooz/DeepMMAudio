@@ -50,6 +50,14 @@ NUM_WORKERS = 16
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+midas = torch.hub.load("intel-isl/MiDaS", "DPT_Hybrid")
+midas.to(device)
+midas.eval()
+midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
+transform = midas_transforms.dpt_transform
+
 # uncomment the train/test/val sets to extract latents for them
 data_cfg = {
     'example': {
@@ -100,6 +108,36 @@ def setup_dataset(split: str):
 
     return dataset, loader
 
+def generate_depth_video(video: torch.Tensor):
+    B, T, C, H, W = video.shape
+    frames = video.reshape(B * T, C, H, W)
+
+    depth_maps = []
+
+    for i in range(B * T):
+        frame = frames[i]
+
+        # unnormalize frames
+        frame = (frame * 255).clamp(0, 255)
+        # [C, H, W] -> [H, W, C]
+        frame = frame.permute(1, 2, 0).cpu().numpy().astype('uint8')
+        frame = transform(frame).to(device)
+
+        prediction = midas(frame)
+        depth = prediction.squeeze()
+
+        # normalize to [0,1]
+        dmin, dmax = depth.min(), depth.max()
+        depth = (depth - dmin) / (dmax - dmin + 1e-8)
+
+        # create three channels
+        depth = depth.unsqueeze(0).repeat(C, 1, 1)
+
+        depth_maps.append(depth)
+
+    depth_video = torch.stack(depth_maps).reshape(B, T, C, H, W).to(device)
+
+    return depth_video
 
 @torch.inference_mode()
 def extract():
@@ -146,8 +184,7 @@ def extract():
             output['std'] = dist.std.detach().cpu().transpose(1, 2)
 
             clip_video = data['clip_video'].cuda()
-            # generate random depth video for now
-            depth_video = torch.randn_like(clip_video).cuda()
+            depth_video = generate_depth_video(clip_video)
             clip_features = feature_extractor.encode_video_with_clip(clip_video)
             depth_features = feature_extractor.encode_video_with_clip(depth_video)
             output['depth_features'] = depth_features.detach().cpu()
