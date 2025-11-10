@@ -39,7 +39,12 @@ for audio_file in tqdm(audio_files):
     audio_file_path = data_dir / audio_file
     audio_name = audio_file_path.stem
 
-    waveform, sample_rate = torchaudio.load(audio_file_path)
+    try:
+        waveform, sample_rate = torchaudio.load(audio_file_path)
+    except RuntimeError as e:
+        print(f"\n[Error] Failed to load {audio_file_path}: {e}. Skipping file.")
+        blacklisted += 1  # Increment the blacklist count
+        continue  # Skip to the next file
 
     # waveform: (1/2) * length
     if waveform.shape[1] < sample_rate * min_length_sec:
