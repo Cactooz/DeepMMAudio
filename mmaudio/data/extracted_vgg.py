@@ -19,6 +19,8 @@ class ExtractedVGG(Dataset):
         tsv_path: Union[str, Path],
         *,
         premade_mmap_dir: Union[str, Path],
+        premade_mmap_dir_depth: Union[str, Path],
+        mapping_file: Union[str, Path],
         data_dim: dict[str, int],
     ):
         super().__init__()
@@ -30,14 +32,20 @@ class ExtractedVGG(Dataset):
         log.info(f'Loading precomputed mmap from {premade_mmap_dir}')
         # load precomputed memory mapped tensors
         premade_mmap_dir = Path(premade_mmap_dir)
+        premade_mmap_dir_depth = Path(premade_mmap_dir_depth)
         td = TensorDict.load_memmap(premade_mmap_dir)
+        td_depth = TensorDict.load_memmap(premade_mmap_dir_depth)
         log.info(f'Loaded precomputed mmap from {premade_mmap_dir}')
         self.mean = td['mean']
         self.std = td['std']
         self.clip_features = td['clip_features']
         self.sync_features = td['sync_features']
         self.text_features = td['text_features']
-        self.depth_features = td['depth_features']
+        self.depth_features = td_depth['depth_features']
+
+        self.lines = None
+        with open(mapping_file, 'r') as f:
+            self.lines = f.readlines()
 
         if local_rank == 0:
             log.info(f'Loaded {len(self)} samples.')
@@ -90,13 +98,16 @@ class ExtractedVGG(Dataset):
         return td
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        
+        memmap_idx = int(self.lines[idx].strip())
+
         data = {
             'id': self.df_list[idx]['id'],
-            'a_mean': self.mean[idx],
-            'a_std': self.std[idx],
-            'clip_features': self.clip_features[idx],
-            'sync_features': self.sync_features[idx],
-            'text_features': self.text_features[idx],
+            'a_mean': self.mean[memmap_idx],
+            'a_std': self.std[memmap_idx],
+            'clip_features': self.clip_features[memmap_idx],
+            'sync_features': self.sync_features[memmap_idx],
+            'text_features': self.text_features[memmap_idx],
             'depth_features': self.depth_features[idx],
             'caption': self.df_list[idx]['label'],
             'video_exist': self.video_exist,

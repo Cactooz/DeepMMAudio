@@ -29,7 +29,10 @@ def worker_init_fn(worker_id: int):
 def load_vgg_data(cfg: DictConfig, data_cfg: DictConfig) -> Dataset:
     dataset = ExtractedVGG(tsv_path=data_cfg.tsv,
                            data_dim=cfg.data_dim,
-                           premade_mmap_dir=data_cfg.memmap_dir)
+                           premade_mmap_dir=data_cfg.memmap_dir,
+                           premade_mmap_dir_depth=data_cfg.memmap_dir_depth,
+                           mapping_file=data_cfg.mapping_file
+                           )
 
     return dataset
 
@@ -55,12 +58,11 @@ def setup_training_datasets(cfg: DictConfig) -> tuple[Dataset, DistributedSample
         # load the largest one first
         freesound = load_audio_data(cfg, cfg.data.FreeSound)
         vgg = load_vgg_data(cfg, cfg.data.ExtractedVGG)
-        audiocaps = load_audio_data(cfg, cfg.data.AudioCaps)
         audioset_sl = load_audio_data(cfg, cfg.data.AudioSetSL)
         bbcsound = load_audio_data(cfg, cfg.data.BBCSound)
         clotho = load_audio_data(cfg, cfg.data.Clotho)
         dataset = MultiModalDataset([vgg] * cfg.vgg_oversample_rate,
-                                    [audiocaps, audioset_sl, bbcsound, freesound, clotho])
+                                    [audioset_sl, bbcsound, freesound, clotho])
 
     batch_size = cfg.batch_size
     num_workers = cfg.num_workers

@@ -9,7 +9,7 @@ hydra:
   output_subdir: eval-${now:%Y-%m-%d_%H-%M-%S}-hydra
 
 exp_id: ${model}
-dataset: audiocaps
+dataset: vggsound
 duration_s: 8.0
 
 # for inference, this is the per-GPU batch size

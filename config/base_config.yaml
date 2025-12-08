@@ -11,7 +11,7 @@ hydra:
 
 enable_email: False
 
-model: small_16k
+model: small_44k
 
 exp_id: default
 debug: False
@@ -21,7 +21,7 @@ amp: True
 weights: null
 checkpoint: null
 seed: 14159265
-num_workers: 10 # per-GPU
+num_workers: 12 # per-GPU
 pin_memory: False # set to True if your system can handle it, i.e., have enough memory
 
 # NOTE: This DOSE NOT affect the model during inference in any way

@@ -17,8 +17,43 @@ from mmaudio.model.utils.features_utils import FeaturesUtils
 from mmaudio.utils.download_utils import download_model_if_needed
 
 log = logging.getLogger()
+midas = torch.hub.load("intel-isl/MiDaS", "DPT_Hybrid")
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+midas.to(device)
+midas.eval()
+midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
+transform = midas_transforms.dpt_transform
 
+def generate_depth_video(video: torch.Tensor):
+    B, T, C, H, W = video.shape
+    frames = video.reshape(B * T, C, H, W)
 
+    depth_maps = []
+
+    for i in range(B * T):
+        frame = frames[i]
+
+        # unnormalize frames
+        frame = (frame * 255).clamp(0, 255)
+        # [C, H, W] -> [H, W, C]
+        frame = frame.permute(1, 2, 0).cpu().numpy().astype('uint8')
+        frame = transform(frame).to(device)
+
+        prediction = midas(frame)
+        depth = prediction.squeeze()
+
+        # normalize to [0,1]
+        dmin, dmax = depth.min(), depth.max()
+        depth = (depth - dmin) / (dmax - dmin + 1e-8)
+
+        # create three channels
+        depth = depth.unsqueeze(0).repeat(C, 1, 1)
+
+        depth_maps.append(depth)
+
+    depth_video = torch.stack(depth_maps).reshape(B, T, C, H, W).to(device)
+
+    return depth_video
 @dataclasses.dataclass
 class ModelConfig:
     model_name: str
@@ -101,10 +136,16 @@ def generate(
         clip_features = feature_utils.encode_video_with_clip(clip_video,
                                                              batch_size=bs *
                                                              clip_batch_size_multiplier)
+        depth_video = generate_depth_video(clip_video)
+        depth_features = feature_utils.encode_video_with_clip(depth_video,
+                                                             batch_size=bs *
+                                                             clip_batch_size_multiplier)
         if image_input:
             clip_features = clip_features.expand(-1, net.clip_seq_len, -1)
+            depth_features = depth_features.expand(-1, net.clip_seq_len, -1)
     else:
         clip_features = net.get_empty_clip_sequence(bs)
+        depth_features = net.get_empty_depth_sequence(bs)
 
     if sync_video is not None and not image_input:
         sync_video = sync_video.to(device, dtype, non_blocking=True)
@@ -131,7 +172,7 @@ def generate(
                      device=device,
                      dtype=dtype,
                      generator=rng)
-    preprocessed_conditions = net.preprocess_conditions(clip_features, sync_features, text_features)
+    preprocessed_conditions = net.preprocess_conditions(clip_features, sync_features, text_features, depth_features)
     empty_conditions = net.get_empty_conditions(
         bs, negative_text_features=negative_text_features if negative_text is not None else None)
 

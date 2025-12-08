@@ -24,12 +24,12 @@ def main():
     parser = ArgumentParser()
     parser.add_argument('--variant',
                         type=str,
-                        default='large_44k_v2',
+                        default='small_44k',
                         help='small_16k, small_44k, medium_44k, large_44k, large_44k_v2')
     parser.add_argument('--video', type=Path, help='Path to the video file')
     parser.add_argument('--prompt', type=str, help='Input prompt', default='')
     parser.add_argument('--negative_prompt', type=str, help='Negative prompt', default='')
-    parser.add_argument('--duration', type=float, default=8.0)
+    parser.add_argument('--duration', type=float, default=12)
     parser.add_argument('--cfg_strength', type=float, default=4.5)
     parser.add_argument('--num_steps', type=int, default=25)
 
@@ -69,14 +69,20 @@ def main():
         device = 'mps'
     else:
         log.warning('CUDA/MPS are not available, running on CPU')
-    dtype = torch.float32 if args.full_precision else torch.bfloat16
+    dtype = torch.float32
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # load a pretrained model
+    log.info('Loading model variant: %s', model.model_name)
     net: MMAudio = get_my_mmaudio(model.model_name).to(device, dtype).eval()
-    net.load_weights(torch.load(model.model_path, map_location=device, weights_only=True))
-    log.info(f'Loaded weights from {model.model_path}')
+    ckpt = Path("./depth-checkpoint.pth")
+
+    checkpoint_data = torch.load(ckpt, map_location=device, weights_only=True)
+    state_dict = checkpoint_data['weights']
+    net.load_weights(state_dict)
+
+    log.info(f'Loaded weights from {ckpt}')
 
     # misc setup
     rng = torch.Generator(device=device)

@@ -9,7 +9,7 @@ hydra:
     dir: ./output/${exp_id}
   output_subdir: train-${now:%Y-%m-%d_%H-%M-%S}-hydra
 
-ema: 
+ema:
   start: 0
 
 mini_train: False
@@ -20,14 +20,14 @@ vgg_oversample_rate: 5
 log_text_interval: 200
 log_extra_interval: 20_000
 val_interval: 5_000
-eval_interval: 20_000
-save_eval_interval: 40_000
+eval_interval: 20_000_000
+save_eval_interval: 40_000_000
 save_weights_interval: 10_000
 save_checkpoint_interval: 10_000
 save_copy_iterations: []
 
-batch_size: 512
-eval_batch_size: 256 # per-GPU
+batch_size: 448
+eval_batch_size: 448 # per-GPU
 
 num_iterations: 300_000
 learning_rate: 1.0e-4
